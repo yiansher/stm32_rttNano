@@ -10,7 +10,7 @@
 uint8_t led_onoff = 1;
 struct rt_semaphore sem_lock;
 struct rt_semaphore sem_led, sem_screen;
-#define D_T 100
+#define D_T 1000
 /**************************************************************/
 #if 1
 extern void PrintVarFormat(u8g2_t *u8g2, u8g2_uint_t x, u8g2_uint_t y, const uint8_t *font, short var);
@@ -21,29 +21,24 @@ void led_thread_entry(void *parm)
 //    u8g2_t u8g2; // 显示器初始化结构体
 //    MD_OLED_RST_Set(); //显示器复位拉高
 //    u8g2Init(&u8g2);   //显示器调用初始化函数
+    rt_tick_t tick = rt_tick_get();
     while (1)
     {
+        tick = rt_tick_get();
         rt_kprintf("[led_entry:%d]\r\n", rt_tick_get());
-//        rt_sem_take(&sem_led, RT_WAITING_FOREVER);
-//        rt_sem_take(&sem_lock, RT_WAITING_FOREVER);
-//        HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, (GPIO_PinState)led_onoff);
-//        led_onoff ^= 1;
-//        //        u8g2_ClearBuffer(&u8g2);
-//        //        PrintVarFormat(&u8g2, 60, 30, u8g2_font_inb24_mf, (1-*parm1));
-//        rt_sem_release(&sem_lock);
-//        rt_sem_release(&sem_screen);
-//        rt_kprintf("[led_leave:%d]\r", rt_tick_get());
-        rt_thread_delay(D_T);
+        rt_sem_take(&sem_led, RT_WAITING_FOREVER);
+        rt_sem_take(&sem_lock, RT_WAITING_FOREVER);
+        HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, (GPIO_PinState)led_onoff);
+        led_onoff ^= 1;
+        rt_sem_release(&sem_lock);
+        rt_sem_release(&sem_screen);
+//        rt_kprintf("[led_leave:%d]\r\n", rt_tick_get());
+        rt_thread_delay_until(&tick,D_T);
     }
 }
 
 void led_task(void)
 {
-//    rt_thread_t tid;
-//    tid = rt_thread_create("led", led_thread_entry, RT_NULL,
-//                           8*20, 8, 5);
-//    RT_ASSERT(tid != RT_NULL);
-//    rt_thread_startup(tid);
 }
 #endif
 /**************************************************************/
@@ -63,46 +58,71 @@ void PrintVarFormat(u8g2_t *u8g2, u8g2_uint_t x, u8g2_uint_t y, const uint8_t *f
     u8g2_SendBuffer(u8g2);
 }
 extern uint8_t *set;
+    u8g2_t u8g2; // 显示器初始化结构体
 void screen_thread_entry(void *parameter)
 {
-    static rt_err_t result;
-    u8g2_t u8g2; // 显示器初始化结构体
-    MD_OLED_RST_Set(); //显示器复位拉高
-    u8g2Init(&u8g2);   //显示器调用初始化函数
+//    static rt_err_t result;
+
+//    MD_OLED_RST_Set(); //显示器复位拉高
+//    u8g2Init(&u8g2);   //显示器调用初始化函数
 
     // short *parm = parameter;
+    rt_tick_t tick = rt_tick_get();
     while(1)
     {
+        tick = rt_tick_get();
         rt_kprintf("[screen_entry:%d]\r\n", rt_tick_get());
-//        rt_sem_take(&sem_screen, RT_WAITING_FOREVER);
-//        rt_sem_take(&sem_lock, RT_WAITING_FOREVER);
-////        u8g2_ClearBuffer(&u8g2);
-////        PrintVarFormat(&u8g2, 60, 30, u8g2_font_inb24_mf, (short)led_onoff);
-//        HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, (GPIO_PinState)led_onoff);
-//        led_onoff ^= 1;
-//        rt_sem_release(&sem_lock);
-//        rt_sem_release(&sem_led);
-//        rt_kprintf("[screen_leave:%d]\r", rt_tick_get());
-        rt_thread_delay(D_T);
+        rt_sem_take(&sem_screen, RT_WAITING_FOREVER);
+        rt_sem_take(&sem_lock, RT_WAITING_FOREVER);
+        u8g2_ClearBuffer(&u8g2);
+        PrintVarFormat(&u8g2, 60, 30, u8g2_font_inb24_mf, (short)led_onoff);
+        rt_sem_release(&sem_lock);
+        rt_sem_release(&sem_led);
+//        rt_kprintf("[screen_leave:%d]\r\n", rt_tick_get());
+        rt_thread_delay_until(&tick,D_T);
 
     }
 }
 
 void screen_task(void)
 {
+    MD_OLED_RST_Set(); //显示器复位拉高
+    u8g2Init(&u8g2);   //显示器调用初始化函数
+    #if 1
     rt_sem_init(&sem_lock, "lock",     1,      RT_IPC_FLAG_FIFO);
     rt_sem_init(&sem_led, "led",   1, RT_IPC_FLAG_FIFO);
     rt_sem_init(&sem_screen, "screen",     0,      RT_IPC_FLAG_FIFO);
     rt_thread_t tid1;
     tid1 = rt_thread_create("led", led_thread_entry, RT_NULL,
-                            1024, 8, 10);
+                            1024, 8, 1);
     RT_ASSERT(tid1 != RT_NULL);
     rt_thread_startup(tid1);
     rt_thread_t tid2;
     tid2 = rt_thread_create("screen", screen_thread_entry, RT_NULL,
-                            1024, 7, 10);
+                            1024, 7, 1);
     RT_ASSERT(tid2 != RT_NULL);
     rt_thread_startup(tid2);
+    #endif
+    #if 0
+    static rt_timer_t timer1;
+    static rt_timer_t timer2;
+    /* 创建定时器1  周期定时器 */
+    timer1 = rt_timer_create("timer1", led_thread_entry,
+                             RT_NULL, 1000,
+                             RT_TIMER_FLAG_PERIODIC);
+
+    /* 启动定时器1 */
+    if (timer1 != RT_NULL) rt_timer_start(timer1);
+
+    /* 创建定时器2 单次定时器 */
+    timer2 = rt_timer_create("timer2", screen_thread_entry,
+                             RT_NULL,  1000,
+                             RT_TIMER_FLAG_PERIODIC);
+
+    /* 启动定时器2 */
+    if (timer2 != RT_NULL) rt_timer_start(timer2);
+    return ;
+    #endif
 }
 
 #endif
